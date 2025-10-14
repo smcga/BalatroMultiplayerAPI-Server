@@ -1,298 +1,251 @@
-# Server API Documentation
-
-This server is written using good faith, there is no verification of data sent from the client, we have to assume there has been no tampering. That being said, it would be possible to maliciously manipulate other's games if you can impersonate another socket connection, though I am not sure how possible/easy this is. I would love to implement TLS but at this moment I don't think it is possible for me to add lua packages (such as an SSL package) without including the full source code. A security-based C module for the mod might be nessesary in the future.
-
-For ease of parsing in lua, communications between the client and server are in CSV, where the "action" column is manditory with every socket message. The rest of the columns are action-specific. Columns do not need to be in any particular order.
-
-## Actions
-
-example_action_name: param1, param2?
-- description of action
-- param1: description of param1
-- param2?: description of optional param2
-
-### Server to Client
-
-connected
-- Client successfully connected
-
----
-
-disconnected
-- Only sent from the network thread to the UI and never from the server. Indicates that the socket has gracefully closed or declared dead through the keepAlive mechanism.
-
----
-
-error: message
-- An error, this should only be used when needed since it is very intrusive
-
----
-
-joinedLobby: code
-- Client should act as if in a lobby with given code
-- code: 5 letter code acting as a lobby ID
-
----
-
-lobbyInfo: host, guest?, isHost
-- Gives clients info on the lobby state
-- host: Lobby host's username
-- guest?: Lobby guest's username
-- isHost: Whether the client is the host, must be a boolean (client will interpret this as a string)
-
-*This will obviously need reworking for 8 players but it is the simplest way of doing it for now
-
----
-
-stopGame
-- Tells the client to return to the lobby. This should be sent if any client returns to lobby.
-
----
-
-startGame: deck, stake?, seed?
-- Tells the client to start the run
-- deck: Deck or challenge id to start the game with, must be a [deck type](#deck-types) or [challenge type](#deck-types)
-- stake?: Stake to start the deck with, does not affect challenges, must be a number between 1 and 8
-- seed?: Seed that the clients will start the run with, must be a [seed type](#seed-types)
-
----
-
-startBlind
-- Tells the client to start the next blind. This should be sent when both clients are ready.
-
----
-
-winGame
-- Tells the client to force win the run.
-
----
-
-loseGame
-- Tells the client to force lose the run.
-
----
-
-playerInfo: lives
-- Info to send to the client at the start of the game and whenever it is requested
-- lives: Amount of lives the client currently has, must be a number
-
----
-
-enemyInfo: score, handsLeft, skips, lives
-- Updates the client on their enemy's score and hands left. This should be sent when the enemy plays a hand
-
----
-
-endPvP: lost
-- Needs to be sent at the end of a PvP blind, clients will wait for this
-- lost: Whether the client lost the PvP, client will take this as a life lost (server should reflect this), must be a boolean value (client will interpret this as a string)
-
----
-
-lobbyOptions: gamemode, {any number of options recognized by the client}
-- Updates guest clients when host changes options, should be sent when client connects and when options change
-- Requested gamemode type, must be a [server type](#server-types)
-
-### Client to Server
-
-username: username, modHash
-- Set the client's username
-- username: The value
-- modHash: The client's mod hash
-
----
-
-createLobby: type
-- Request to make a lobby and be given a code. Expecting a 'joinedLobby' response.
-- type: Requested gamemode type, must be a [server type](#server-types)
-
----
-
-joinLobby: code
-- Request to join an existing lobby, by given code. Expecting a 'joinedLobby' or 'error' response.
-- code: 5 letter code acting as a lobby ID
-
----
-
-leaveLobby
-- Leave the joined lobby, a code is not provided because this should be *almost* equivalent to when a client socket is destroyed, so it needs to be functional without providing a code
-
----
-
-lobbyInfo
-- Request for an accurate 'lobbyInfo' response, for the lobby the client is connected to
-
----
-
-readyLobby
-- Client is ready to start, host may start the game
-
----
-
-unreadyLobby
-- Client is not ready to start, host has to wait to start the game
-
----
-
-stopGame
-- Client is returning to lobby. Server should send other clients back to lobby as well.
-
----
-
-startGame
-- Request to start the run. Expecting a 'startGame' response.
-
----
-
-readyBlind
-- Declare ready to start next blind. Expecting 'startBlind' response.
-
----
-
-unreadyBlind
-- Declare not ready to start next blind.
-
----
-
-playHand: score, handsLeft
-- Client has played a hand.
-- score: The total score of all hands played in the blind so far, must be a number
-- handsLeft: The total number of hands left that the client can play this blind, must be a number
-
----
-
-playerInfo
-- Request a playerInfo update.
-
----
-
-enemyInfo
-- Request an enemyInfo update.
-
----
-
-lobbyOptions: {any number of options recognized by the client}
-- Updates the server-side log of lobby options, should be sent on lobby start and when options are changed
-
----
-
-failRound
-- Declares the client lost a round
-
----
-
-setAnte: ante
-- Declares the current ante that the client is on to the server, this needs to be handled by the server on a per-client basis since clients can be on different antes at the same time
-- ante: The ante to set the client to on the server side
-
----
-
-setFurthestBlind: furthestBlind
-- Declares the furthest blind the client has beaten to the server
-- furthestBlind: The number to set the client's furthest blind to on the server side
-
-### Utility
-
-keepAlive
-- Request a keepAliveAck response.
-
----
-
-keepAliveAck
-- Send a response to the keepAlive request.
+# Balatro Multiplayer Server API
+
+## Overview
+
+This repository contains the multiplayer server that powers the Balatro mod. The implementation is intentionally lightweight: the server assumes clients are behaving in good faith and therefore performs minimal validation. At present there is no TLS support because the Lua environment that loads the mod cannot easily consume SSL libraries. A native security module may be required for hardened deployments in the future.
+
+## Build and Run Guide
+
+### Prerequisites
+
+- [Node.js](https://nodejs.org/) 18 or later
+- npm (bundled with Node.js)
+
+### Install dependencies
+
+```bash
+npm install
+```
+
+### Compile the TypeScript source
+
+Compile the server into the `dist/` directory before running it in production:
+
+```bash
+npm run build
+```
+
+To rebuild the Lua distribution artifacts used by the Balatro mod, run:
+
+```bash
+npm run build-servers
+```
+
+### Start the server
+
+Run the compiled server:
+
+```bash
+npm start
+```
+
+For local development with automatic reloads you can use the TypeScript entry point directly:
+
+```bash
+npm run dev
+```
+
+## Communication Protocol
+
+Server and client exchange newline-delimited JSON (NDJSON) messages. Each payload is a JSON object with an `action` property and any additional fields required by that action. Messages are terminated with a single `\n` when sent over the socket.
+
+```json
+{"action":"username","username":"PlayerOne","modHash":"abc123"}\n
+```
+
+Fields that are omitted or set to `null` are treated as absent by the server.
+
+### Server-to-client actions
+
+| Action | Parameters | Description |
+| --- | --- | --- |
+| `connected` | – | Confirms a client connection. |
+| `version` | – | Requests the client report its mod version. |
+| `error` | `message` | Displays a critical error to the client. |
+| `joinedLobby` | `code`, `type` | Instructs the client to treat itself as joined to the specified lobby. |
+| `lobbyInfo` | `host`, `hostHash`, `hostCached`, `guest?`, `guestHash?`, `guestCached?`, `guestReady?`, `isHost` | Provides the current lobby composition, cache status, and readiness flags. |
+| `lobbyOptions` | `gamemode`, _other option keys_ | Shares lobby option updates made by the host. |
+| `stopGame` | – | Forces a return to the lobby for all clients when any participant exits. |
+| `startGame` | `deck`, `seed?`, `stake?` | Starts a run for all players. The server currently emits the default multiplayer challenge deck (`c_multiplayer_1`). |
+| `startBlind` | – | Begins the next blind once every client has confirmed readiness. |
+| `gameInfo` | `small?`, `big?`, `boss?` | Communicates current blind information. |
+| `playerInfo` | `lives` | Communicates the client’s life total at the start of the game and whenever it changes. |
+| `enemyInfo` | `score`, `handsLeft`, `skips`, `lives` | Updates the opposing player’s status whenever they complete a hand. |
+| `endPvP` | `lost` | Signals the end of a PvP blind. |
+| `winGame` | – | Forces the client to win the current run. |
+| `loseGame` | – | Forces the client to lose the current run. |
+| `enemyLocation` | `location` | Reports the opponent’s current in-game location for syncing exploration events. |
+| `sendPhantom` | `key` | Requests the client spawn a phantom joker. |
+| `removePhantom` | `key` | Requests the client remove a phantom joker. |
+| `speedrun` | – | Grants the speedrun buff to the client that readies first. |
+| `asteroid` | – | Triggers the asteroid event. |
+| `letsGoGamblingNemesis` | – | Initiates the “Let’s Go Gambling” nemesis encounter. |
+| `eatPizza` | `whole` | Consumes pizza in the nemesis encounter. |
+| `soldJoker` | – | Indicates that the enemy sold a joker. |
+| `spentLastShop` | `amount` | Reports the amount the opponent spent in their last shop visit. |
+| `magnet` | – | Announces that the magnet effect should resolve. |
+| `magnetResponse` | `key` | Provides the magnet resolution key. |
+| `getEndGameJokers` | – | Requests the client send its end-game jokers. |
+| `receiveEndGameJokers` | `keys` | Supplies end-game joker identifiers. |
+| `getNemesisDeck` | – | Requests the client’s nemesis deck. |
+| `receiveNemesisDeck` | `cards` | Supplies nemesis deck card identifiers. |
+| `endGameStatsRequested` | – | Requests nemesis end-game statistics. |
+| `nemesisEndGameStats` | `reroll_count`, `reroll_cost_total`, `vouchers` | Provides nemesis end-game statistics. |
+| `startAnteTimer` | `time` | Starts the ante countdown timer. |
+| `pauseAnteTimer` | `time` | Pauses the ante countdown timer, preserving the remaining time. |
+
+### Client-to-server actions
+
+| Action | Parameters | Description |
+| --- | --- | --- |
+| `username` | `username`, `modHash` | Registers the client username and mod hash. |
+| `version` | `version` | Reports the client mod version. |
+| `setLocation` | `location` | Shares the client’s current in-game location for syncing world events. |
+| `syncClient` | `isCached` | Notifies the server that the local cache is synchronized. |
+| `createLobby` | `gameMode` | Requests a new lobby. Expects a `joinedLobby` response. |
+| `joinLobby` | `code` | Joins an existing lobby by five-character code. Expects a `joinedLobby` or `error` response. |
+| `lobbyOptions` | `gamemode`, _other option keys_ | Persists lobby option updates. Send on lobby creation and whenever an option changes. |
+| `lobbyInfo` | – | Requests the current lobby composition. |
+| `leaveLobby` | – | Leaves the current lobby. |
+| `readyLobby` | – | Marks the client as ready within the lobby. |
+| `unreadyLobby` | – | Marks the client as not ready within the lobby. |
+| `startGame` | – | Instructs the server (host only) to start the game. |
+| `stopGame` | – | Requests a return to the lobby. |
+| `readyBlind` | – | Indicates the client is ready for the next blind. |
+| `unreadyBlind` | – | Cancels readiness for the next blind. |
+| `playHand` | `score`, `handsLeft`, `hasSpeedrun` | Sends the player’s hand result. |
+| `gameInfo` | – | Requests the next blind information. |
+| `playerInfo` | – | Requests the player’s life total. |
+| `enemyInfo` | – | Requests the enemy’s status. |
+| `failRound` | – | Declares that the client failed the current round. |
+| `setAnte` | `ante` | Sets the client’s current ante server-side. |
+| `setFurthestBlind` | `furthestBlind` | Records the furthest blind defeated by the client. |
+| `newRound` | – | Signals the start of a new round. |
+| `skip` | `skips` | Communicates remaining skips. |
+| `asteroid` | – | Triggers the asteroid event from the client. |
+| `sendPhantom` | `key` | Sends a phantom joker to the opponent. |
+| `removePhantom` | `key` | Removes a phantom joker from the opponent. |
+| `letsGoGamblingNemesis` | – | Initiates the “Let’s Go Gambling” nemesis encounter. |
+| `eatPizza` | `whole` | Consumes pizza in the nemesis encounter. |
+| `soldJoker` | – | Reports that the player sold a joker. |
+| `spentLastShop` | `amount` | Sends the amount spent in the previous shop visit. |
+| `magnet` | – | Notifies the server to resolve magnet effects. |
+| `magnetResponse` | `key` | Responds with magnet resolution data. |
+| `getEndGameJokers` | – | Requests opponent end-game jokers. |
+| `receiveEndGameJokers` | `keys` | Shares end-game joker identifiers. |
+| `getNemesisDeck` | – | Requests the opponent’s nemesis deck. |
+| `receiveNemesisDeck` | `cards` | Shares nemesis deck card identifiers. |
+| `endGameStatsRequested` | – | Requests nemesis end-game statistics. |
+| `nemesisEndGameStats` | `reroll_count`, `reroll_cost_total`, `vouchers` | Shares nemesis end-game statistics. |
+| `startAnteTimer` | `time` | Starts the ante countdown timer. |
+| `pauseAnteTimer` | `time` | Pauses the ante countdown timer. |
+| `failTimer` | – | Declares that the ante timer expired. |
+
+### Utility messages
+
+Utility actions are shared by both client and server to maintain the connection.
+
+| Action | Description |
+| --- | --- |
+| `keepAlive` | Requests a heartbeat acknowledgement. |
+| `keepAliveAck` | Acknowledges a `keepAlive` ping. |
 
 ## Server Types
 
-- attrition
-  - Both players start with 4 lives
-  - Every set's boss should be PvP
-- showdown
-  - Both players start with 2 lives
-  - First 4 antes are normal, rest of antes are only PvP blinds
+- `attrition`
+  - Both players start with four lives.
+  - Every set’s boss blind is PvP.
+- `showdown`
+  - Both players start with two lives.
+  - The first four antes follow normal rules; all subsequent antes are PvP blinds only.
 
 ## Game Types
 
 ### Blind Types
 
-One of the following, left side is the values, right side is the corosponding in-game name:
-- bl_small          = Small Blind
-- bl_big            = Big Blind
-- bl_ox             = The Ox
-- bl_hook           = The Hook
-- bl_mouth          = The Mouth
-- bl_fish           = The Fish
-- bl_club           = The Club
-- bl_manacle        = The Manacle
-- bl_tooth          = The Tooth
-- bl_wall           = The Wall
-- bl_house          = The House
-- bl_mark           = The Mark
-- bl_final_bell     = Cerulean Bell
-- bl_wheel          = The Wheel
-- bl_arm            = The Arm
-- bl_psychic        = The Psychic
-- bl_goad           = The Goad
-- bl_water          = The Water
-- bl_eye            = The Eye
-- bl_plant          = The Plant
-- bl_needle         = The Needle
-- bl_head           = The Head
-- bl_final_leaf     = Verdant Leaf
-- bl_final_vessel   = Violet Vessel
-- bl_window         = The Window
-- bl_serpent        = The Serpent
-- bl_pillar         = The Pillar
-- bl_flint          = The Flint
-- bl_final_acorn    = Amber Acorn
-- bl_final_heart    = Crimson Heart
-- **b1_pvp          = Your Nemesis** <-- This is the blind that needs to be set for players to play against eachother's scores
+The following map server identifiers to in-game blind names:
+
+- `bl_small` = Small Blind
+- `bl_big` = Big Blind
+- `bl_ox` = The Ox
+- `bl_hook` = The Hook
+- `bl_mouth` = The Mouth
+- `bl_fish` = The Fish
+- `bl_club` = The Club
+- `bl_manacle` = The Manacle
+- `bl_tooth` = The Tooth
+- `bl_wall` = The Wall
+- `bl_house` = The House
+- `bl_mark` = The Mark
+- `bl_final_bell` = Cerulean Bell
+- `bl_wheel` = The Wheel
+- `bl_arm` = The Arm
+- `bl_psychic` = The Psychic
+- `bl_goad` = The Goad
+- `bl_water` = The Water
+- `bl_eye` = The Eye
+- `bl_plant` = The Plant
+- `bl_needle` = The Needle
+- `bl_head` = The Head
+- `bl_final_leaf` = Verdant Leaf
+- `bl_final_vessel` = Violet Vessel
+- `bl_window` = The Window
+- `bl_serpent` = The Serpent
+- `bl_pillar` = The Pillar
+- `bl_flint` = The Flint
+- `bl_final_acorn` = Amber Acorn
+- `bl_final_heart` = Crimson Heart
+- **`b1_pvp` = Your Nemesis** — required for head-to-head score comparisons.
 
 ### Deck Types
 
-One of the following, left side is the values, right side is the corosponding in-game name:
-- b_red         = Red Deck
-- b_blue        = Blue Deck
-- b_yellow      = Yellow Deck
-- b_green       = Green Deck
-- b_black       = Black Deck
-- b_magic       = Magic Deck
-- b_nebula      = Nebula Deck
-- b_ghost       = Ghost Deck
-- b_abandoned   = Abandoned Deck
-- b_checkered   = Checkered Deck
-- b_zodiac      = Zodiac Deck
-- b_painted     = Painted Deck
-- b_anaglyph    = Anaglyph Deck
-- b_plasma      = Plasma Deck
-- b_erratic     = Erratic Deck
+Deck identifiers resolve to the following in-game decks:
+
+- `b_red` = Red Deck
+- `b_blue` = Blue Deck
+- `b_yellow` = Yellow Deck
+- `b_green` = Green Deck
+- `b_black` = Black Deck
+- `b_magic` = Magic Deck
+- `b_nebula` = Nebula Deck
+- `b_ghost` = Ghost Deck
+- `b_abandoned` = Abandoned Deck
+- `b_checkered` = Checkered Deck
+- `b_zodiac` = Zodiac Deck
+- `b_painted` = Painted Deck
+- `b_anaglyph` = Anaglyph Deck
+- `b_plasma` = Plasma Deck
+- `b_erratic` = Erratic Deck
 
 ### Challenge Types
 
-One of the following, left side is the values, right side is the corosponding in-game name:
-- c_omelette_1        = The Omelette
-- c_city_1            = 15 Minute City
-- c_rich_1            = Rich get Richer
-- c_knife_1           = On a Knife's Edge
-- c_xray_1            = X-ray Vision
-- c_mad_world_1       = Mad World
-- c_luxury_1          = Luxury Tax
-- c_non_perishable_1  = Non-Perishable
-- c_medusa_1          = Medusa
-- c_double_nothing_1  = Double or Nothing
-- c_typecast_1        = Typecast
-- c_inflation_1       = Inflation
-- c_bram_poker_1      = Bram Poker
-- c_fragile_1         = Fragile
-- c_monolith_1        = Monolith
-- c_blast_off_1       = Blast Off
-- c_five_card_1       = Five-Card Draw
-- c_golden_needle_1   = Golden Needle
-- c_cruelty_1         = Cruelty
-- c_jokerless_1       = Jokerless
-- **c_multiplayer_1   = Multiplayer Default** <-- This is the default deck until deck selection implementation (will be removed)
+Challenge identifiers resolve to the following in-game challenges:
+
+- `c_omelette_1` = The Omelette
+- `c_city_1` = 15 Minute City
+- `c_rich_1` = Rich Get Richer
+- `c_knife_1` = On a Knife’s Edge
+- `c_xray_1` = X-ray Vision
+- `c_mad_world_1` = Mad World
+- `c_luxury_1` = Luxury Tax
+- `c_non_perishable_1` = Non-Perishable
+- `c_medusa_1` = Medusa
+- `c_double_nothing_1` = Double or Nothing
+- `c_typecast_1` = Typecast
+- `c_inflation_1` = Inflation
+- `c_bram_poker_1` = Bram Poker
+- `c_fragile_1` = Fragile
+- `c_monolith_1` = Monolith
+- `c_blast_off_1` = Blast Off
+- `c_five_card_1` = Five-Card Draw
+- `c_golden_needle_1` = Golden Needle
+- `c_cruelty_1` = Cruelty
+- `c_jokerless_1` = Jokerless
+- **`c_multiplayer_1` = Multiplayer Default** — temporary default until deck selection is implemented.
 
 ### Seed Type
 
-- String
-- Exactly 8 Characters Long
-- Only Uppercase Letters and Numbers
+Seeds must:
+
+- Be strings exactly eight characters long.
+- Consist only of uppercase letters and numbers.
