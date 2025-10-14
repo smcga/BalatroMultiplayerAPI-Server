@@ -73,7 +73,7 @@ return {
 Server and client exchange newline-delimited JSON (NDJSON) messages. Each payload is a JSON object with an `action` property and any additional fields required by that action. Messages are terminated with a single `\n` when sent over the socket.
 
 ```json
-{"action":"username","username":"PlayerOne","modHash":"abc123"}\n
+{"action":"username","username":"PlayerOne","modHash":"abc123"}
 ```
 
 Fields that are omitted or set to `null` are treated as absent by the server.
