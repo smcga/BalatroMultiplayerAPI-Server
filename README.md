@@ -45,6 +45,29 @@ For local development with automatic reloads you can use the TypeScript entry po
 npm run dev
 ```
 
+Update your mod config to point to localhost:
+
+1. Open `%AppData%\Balatro\config`
+2. Edit `Multiplayer.jkr`
+
+```bash
+return {
+	["misprint_display"] = true,
+	["preview"] = {
+	},
+	["blind_col"] = 1,
+	["unlocked"] = false,
+	["server_port"] = 8788,
+	["logging"] = false,
+	["username"] = "Guest",
+	["server_url"] = "localhost",
+	["integrations"] = {
+		["Preview"] = false,
+		["TheOrder"] = true,
+	},
+}
+```
+
 ## Communication Protocol
 
 Server and client exchange newline-delimited JSON (NDJSON) messages. Each payload is a JSON object with an `action` property and any additional fields required by that action. Messages are terminated with a single `\n` when sent over the socket.
