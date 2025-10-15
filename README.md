@@ -45,6 +45,14 @@ For local development with automatic reloads you can use the TypeScript entry po
 npm run dev
 ```
 
+### Run the test suite
+
+Unit tests validate core lobby behavior and utility helpers. Execute them with:
+
+```bash
+npm test
+```
+
 Update your mod config to point to localhost:
 
 1. Open `%AppData%\Balatro\config`
